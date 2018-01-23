@@ -5,7 +5,7 @@ import names
 # basic user model.  What is this persons activity, what is their username and password, etc.
 # idd may be any random, but unique, id
 class user():
-    def __init__(self, first, last, gender, country, id):
+    def __init__(self, first, last, country, id=None, gender=None, year=None, faculty=None, classes=None):
         self.first_name = first
         self.middle_name = ''
         self.last_name = last
@@ -73,18 +73,28 @@ class user():
         self.join_source = 2
         self.referrer_id = 0
         self.id=id
-        self.genEmails()
+        self.year = year
+        self.faculty = faculty
+        self.classes = classes
+
+        ## generate identity
+        self.gen_id()
+        self.gen_Emails()
+        self.gen_year()
+        self.gen_student_id()
+
 
     # Generate some random email account names for this user
-    def genEmails(self):
+    def gen_Emails(self):
         if country == 'china':
             # add come random numbers
             uwaterloo = '{}{}{}@edu.uwaterloo.ca'.format(first[0],last,self.id)
             gmail = '{}{}{}@gmail.com'.format(first,last,self.id)
             yahoo = '{}{}{}@yahoo.com'.format(first, last, self.id)
+            proton = '{}{}{}@protonmail.com'.format(first, last, self.id)
 
     # generate a new user id, sets self.id as it, and returns it
-    def genid(self):
+    def gen_id(self):
         dirr = os.path.dirname(os.path.abspath(__file__))
         with open(os.path.join(dirr, 'ids.txt'), 'r') as file:
             already_taken = file.readline()
@@ -106,7 +116,7 @@ class user():
         return id_guess
 
     # generate the year this student is in
-    def year(self):
+    def gen_year(self):
         if self.year:
             self.term = str(self.year) + random.choice('A', 'B')
         else:
@@ -114,7 +124,7 @@ class user():
             self.term = str(self.year) + random.choice('A','B')
 
     # pick a random, never before picked, student ID
-    def student_id(self):
+    def gen_student_id(self):
         dirr = os.path.dirname(os.path.abspath(__file__))
         with open(os.path.join(dirr, 'student_ids.txt'), 'r') as file:
             ids = file.readline()
@@ -130,5 +140,18 @@ class user():
         self.student_id = id_guess
         return id_guess
 
+    def gen_faculty(self):
+        pass
 
-
+# program
+class program(self):
+    def __init__(self, faculty):
+        self.faculties = [
+            'Applied Health Sciences',
+            'Arts',
+            'Engineering',
+            'Environment',
+            'Mathematics',
+            'Science',
+        ]
+        pass
