@@ -1,5 +1,93 @@
+import os
+import sqlite3
 import requests
+import random
 from bs4 import BeautifulSoup
+
+class classs():
+    def __init__(self, subject=None, number=None, online=None, lec=None, tut=None, tst=None, credit=None, name=None,
+                 description=None, ID=None, faculty=None, level=None, term=None, year=None):
+        self.subject = subject
+        self.number = number
+        self.online = online
+        self.lec = lec
+        self.tut = tut
+        self.tst = tst
+        self.credit = credit
+        self.name = name
+        self.description = description
+        self.ID = ID
+        self.faculty = faculty
+        self.level = level
+        self.term = term
+        self.year = year
+
+    # given class ID (stat444 for instance) generates class details from DB
+    def _gen_class(self):
+        if not self.ID:
+            raise Exception('Cant acquire class without class ID')
+        if not self.year:
+            raise Exception('Cant acquire class without class year')
+        if not self.term:
+            raise Exception('Cant acquire class without class term')
+        select_statement = ('SELECT DISTINCT (classs.number, classs.online, classs.lec, classs.tut, classs.tst, classs.credit, classs.name, '
+                      'classs.description, classs.faculty, classs.level, classs.ID) ')
+        from_statement = 'FROM classs, offered '
+        where_statement = 'offered.ID="{0}" AND classs.ID="{0}" AND offered.term="{1}" AND offered.year="{2}"'.format(self.ID,self.term,self.year)
+        sql = select_statement + from_statement + where_statement
+        dirr = os.path.dirname(os.path.abspath(__file__))
+        conn = sqlite3.connect("{}/classes.db".format(dirr))
+        c = conn.cursor()
+        row = c.execute(sql).fetchone()
+        (self.subject, self.number, self.online, self.lec, self.tut,
+        self.tst, self.credit, self.name, self.description, self.faculty,
+         self.level, self.ID) = row
+
+    '''
+    gen_random_class:
+        PURPOSE
+            - make this class instance a random class that satisfies the given arguments
+        ARGUMENTS
+            - faculty (str) faculty this class is in (if none, we don't constrain this)
+            - level (int) class level (is this a 100 level course? ) must be 0 or 100 or 200 or 300 or 400.
+            - program (str) 'CO', 'MATH', 'ECON', etc.  if not in the given faculty, will return no results
+            - notin (list) list of ids ([stat441, stat442, ..]) that this class can't be
+            - term: 'F', 'W', or 'S'.  can't be none.
+            - year: 2013, 2017, etc.  must be defined.
+        RETURNS
+            - self
+    '''
+    def gen_random_class(self, faculty=None, level=None, program=None, notin=None, term='F', year=2013):
+        if not (term and year):
+            raise Exception('gotta have a year and term.')
+
+        select_term = ('SELECT DISTINCT classs.subject, classs.number, classs.online, classs.lec, classs.tut, classs.tst, classs.credit, classs.name, '
+                      'classs.description, classs.faculty, classs.level, classs.ID ')
+        from_term = 'FROM classs, offered '
+        where_term = 'WHERE offered.ID=classs.ID AND offered.term="{}" AND offered.year="{}" '.format(term,year)
+        if faculty:
+            where_term += 'AND classs.faculty="{}" '.format(faculty)
+        if level:
+            where_term += 'AND classs.level="{}" '.format(level)
+        if program:
+            where_term += 'AND classs.subject="{}" '.format(program)
+        sql = select_term + from_term + where_term
+        print(sql)
+        dirr = os.path.dirname(os.path.abspath(__file__))
+        conn = sqlite3.connect("{}/classes.db".format(dirr))
+        c = conn.cursor()
+        rows = c.execute(sql).fetchall()
+        rows_clean = list(filter(lambda x: x[-1] not in notin, rows))
+        row = random.choice(rows_clean)
+        (self.subject, self.number, self.online, self.lec, self.tut,
+         self.tst, self.credit, self.name, self.description,
+         self.faculty, self.level, self.ID) = row
+        self.term = term
+        self.year = year
+        return self
+
+
+
 
 
 # class programs
@@ -9,75 +97,12 @@ class Program():
         self.major = major
         self.coop_students = coop_students
 
-    # check if the classes for this department already exists in class.txt
-    # otherwise grab them from online
-    def get_classes(self):
-        dirr = os.path.dirname(os.path.abspath(__file__))
-        with open(os.path.join(dirr, 'department.txt'), 'r') as file:
-            data = file.readline()
-        # check to make sure faculty exists
-        try:
-            fac = data[self.faculty]
-        except:
-            data[self.faculty] = {}
-            with open(os.path.join(dirr, 'department.txt'), 'w+') as file:
-                file.write(data)
-        # faculty DEFINITELY exists now
-        all_classes = {}
-        for code in self.code:
-            try:
-                fac = data[self.faculty]
-                classes = fac[code]
-                all_classes[code] = [Class().fromdict(ele) for ele in classes]
-                continue
-            except:
-                classes = []
-            base_urls = [
-                'http://www.ucalendar.uwaterloo.ca/1314/COURSE/course-{}.html'.format(code),
-                'http://www.ucalendar.uwaterloo.ca/1415/COURSE/course-{}.html'.format(code),
-                'http://www.ucalendar.uwaterloo.ca/1516/COURSE/course-{}.html'.format(code),
-                'http://www.ucalendar.uwaterloo.ca/1617/COURSE/course-{}.html'.format(code),
-                'http://www.ucalendar.uwaterloo.ca/1718/COURSE/course-{}.html'.format(code),
-            ]
-            for url in base_urls:
-                r = requests.get(url).text
-                soup = BeautifulSoup(r)
-
-    def __parse(self,url):
-        r = requests.get(url).text
-        soup = BeautifulSoup(r)
-
-
-
 class Department():
     def __init__(self, programs, program_codes, department):
         self.department = department
         self.programs = programs
 
-
-
-class Class():
-    def __init__(self):
-        self.year = None # beggining year
-        self.subject = None
-        self.number = None
-        self.online = False
-        self.LEC = None
-        self.TUT = None
-        self.TST = None
-        self.credit = None
-        self.faculties = [] # is this only availabe to certain faculties?
-        self.pre_req = [] # what other classes does this one need?
-        self.anti_req = [] # what other classes does this one require u havent taken?
-        self.offered = [] # when is this offered (in each year)? ['S','W','F']
-        self.ID = None
-
-    # pull data from class dict stores in department.txt
-    def fromdict(self, class_dict)
-        return self
-
-
-# Math Department
+# Math Department.  We'll only do this one department, and treat everything else as OTHER; just to save some time.
 MATH = Department(department='MATH', programs=[
         Program('MATH', 'Actuarial Science', ['MATH', 'ACTSC'], 490),
         Program('MATH', 'Applied Mathematics', ['MATH', 'AMATH'], 168),
@@ -117,7 +142,9 @@ MATH = Department(department='MATH', programs=[
 
 
 if __name__ == '__main__':
-
+    c = classs()
+    c.gen_random_class(faculty='OTHER', level=100, term='F', year=2013)
+    print(c.ID, c.year, c.term)
     pass
 
 

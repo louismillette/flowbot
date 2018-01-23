@@ -83,7 +83,6 @@ class user():
         self.gen_year()
         self.gen_student_id()
 
-
     # Generate some random email account names for this user
     def gen_Emails(self):
         if country == 'china':
@@ -142,7 +141,10 @@ class user():
 
     def gen_faculty(self):
         pass
-
+    # generate the classes this bot is in.  A dict of class ID's (stat452 for instance) may be provided,
+    # if this bot should have a particular class set.
+    def gen_classes(self, classes):
+        pass
 # program
 class program(self):
     def __init__(self, faculty):
