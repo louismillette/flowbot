@@ -1,11 +1,13 @@
+import os
 import random
 import requests
 import names
+import majors
 
 # basic user model.  What is this persons activity, what is their username and password, etc.
 # idd may be any random, but unique, id
 class user():
-    def __init__(self, first, last, country, id=None, gender=None, year=None, faculty=None, classes=None):
+    def __init__(self, first=None, last=None, country=None, id=None, gender=None, year=None, faculty=None, program=None):
         self.first_name = first
         self.middle_name = ''
         self.last_name = last
@@ -75,13 +77,13 @@ class user():
         self.id=id
         self.year = year
         self.faculty = faculty
-        self.classes = classes
+        self.program = program
 
         ## generate identity
         self.gen_id()
-        self.gen_Emails()
-        self.gen_year()
-        self.gen_student_id()
+        # self.gen_Emails()
+        # self.gen_year()
+        # self.gen_student_id()
 
     # Generate some random email account names for this user
     def gen_Emails(self):
@@ -114,7 +116,7 @@ class user():
         self.id = id_guess
         return id_guess
 
-    # generate the year this student is in
+    # generate the year this student is in. We'll make them all 2013 cause it doesn't matter
     def gen_year(self):
         if self.year:
             self.term = str(self.year) + random.choice('A', 'B')
@@ -143,17 +145,127 @@ class user():
         pass
     # generate the classes this bot is in.  A dict of class ID's (stat452 for instance) may be provided,
     # if this bot should have a particular class set.
-    def gen_classes(self, classes):
+    # requires defined program and department (although we're only considering math)
+    # classes are taken out of electives
+    def gen_classes(self, classes=None):
+        if classes == None:
+            classes = []
+        program = self.program
+        not_in = ['math135','math136','math137','math138','cs115','cs116','stat230','stat231','math235','math237']
+        electives = []
+        pre_selected_classes = []
+        upper_300200 = []
+        term = 'F'
+        year = 2013
+        # pick our 'demanded' classes
+        print('hit1')
+        for ID in classes:
+            e = majors.classs(id=ID, term=term, year=year)._gen_class()
+            pre_selected_classes.append(e)
+            not_in.append(e.ID)
+        # pick 14 electives
+        print('hit2')
+        for i in range(14-len(classes)):
+            e = majors.classs().gen_random_class(faculty='OTHER', notin=not_in, term=term, year=year)
+            electives.append(e)
+            not_in.append(e.ID)
+        # pick 12 upper year courses
+        print('hit3')
+        try:
+            print(not_in)
+            m400_1 = majors.classs().gen_random_class(faculty='MATH', program=program,level=400, notin=not_in, term='F', year=year)
+        except:
+            m400_1 = majors.classs().gen_random_class(faculty='MATH', program=program, level=400, notin=not_in, term='F', year=year)
+        not_in.append(m400_1.ID)
+        m400_2 = majors.classs().gen_random_class(faculty='MATH', program=program, level=400, notin=not_in, term=term, year=year)
+        not_in.append(m400_2.ID)
+        # major 300's
+        print('hit4')
+        for i in range(6):
+            e = majors.classs().gen_random_class(faculty='MATH', program=program,level=300, notin=not_in, term=term, year=year)
+            upper_300200.append(e)
+            not_in.append(e.ID)
+        # math 300's
+        print('hit5')
+        for i in range(4):
+            e = majors.classs().gen_random_class(faculty='MATH', level=300, notin=not_in, term=term, year=year)
+            upper_300200.append(e)
+            not_in.append(e.ID)
+        # math 200+'s
+        print('hit6')
+        for i in range(4):
+            e = majors.classs().gen_random_class(faculty='MATH', level=200, notin=not_in, term=term, year=year)
+            upper_300200.append(e)
+            not_in.append(e.ID)
+        m1 = majors.classs(ID='math135', year=year, term=term)._gen_class()
+        m2 = majors.classs(ID='math136', year=year, term=term)._gen_class()
+        m3 = majors.classs(ID='math137', year=year, term=term)._gen_class()
+        m4 = majors.classs(ID='math138', year=year, term=term)._gen_class()
+        m5 = majors.classs(ID='cs115', year=year, term=term)._gen_class()
+        m6 = majors.classs(ID='cs116', year=year, term=term)._gen_class()
+        m7 = majors.classs(ID='math237', year=year, term=term)._gen_class()
+        m8 = majors.classs(ID='math235', year=year, term=term)._gen_class()
+        m9 = majors.classs(ID='stat230', year=year, term=term)._gen_class()
+        m10 = majors.classs(ID='stat231', year=year, term=term)._gen_class()
+        core = [m1,m2,m3,m4,m5,m6,m7,m8,m9,m10]
+        courses = core+electives+pre_selected_classes+upper_300200
+        print(len(courses))
+        courses_s = list(sorted(courses, key=lambda x: x.number))
+        terms = {
+            'term_1a': courses_s[:5],
+            'term_1b': courses_s[5:10],
+            'term_2a': courses_s[10:15],
+            'term_2b': courses_s[15:20],
+            'term_3a': courses_s[20:25],
+            'term_3b': courses_s[25:30],
+            'term_4a': courses_s[30:35],
+            'term_4b': courses_s[35:40]
+        }
+        self.classes = terms
+        return terms
+
+    # creates (already parsed) transcript for this student
+    # if year is provided, that is the starting year of this student
+    def gen_transcript(self, year):
+        if not year:
+            year = random.choice([2013,2014,2015,2016,2017])
+        if not self.classes:
+            raise Exception('No classes created')
+        if not self.student_id:
+            raise Exception('No student ID')
+        if not self.program:
+            raise Exception('No Program')
+        baseyear = year
+        course_by_term = []
+        while year <= 2017:
+            curr_year = (year-baseyear) + 1
+            if curr_year == 5:
+                break
+            courses_a = self.classes['term_{}a'.format(curr_year)]
+            courses_b = self.classes['term_{}b'.format(curr_year)]
+            course_by_term += [{
+                "name":"Fall+{}".format(year),
+                "programYearId": "{}A".format(curr_year),
+                "courseIds":[ele.ID for ele in courses_a]
+
+            },{
+                "name": "Winter+{}".format(year),
+                "programYearId": "{}B".format(curr_year),
+                "courseIds": [ele.ID for ele in courses_b]
+            }]
+            year += 1
+        transcript = {
+            "coursesByTerm": course_by_term,
+            "studentId": self.student_id,
+            "programName": self.program
+        }
+        self.transcript = transcript
+        return transcript
+
+
+    # This user creates an account.  requires email, studentID, and classes
+    def create_account(self):
         pass
-# program
-class program(self):
-    def __init__(self, faculty):
-        self.faculties = [
-            'Applied Health Sciences',
-            'Arts',
-            'Engineering',
-            'Environment',
-            'Mathematics',
-            'Science',
-        ]
-        pass
+if __name__ == '__main__':
+    U = user(first='jon',last='public', faculty='MATH',program='cs')
+    # print(U.gen_classes())

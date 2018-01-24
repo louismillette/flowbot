@@ -30,10 +30,10 @@ class classs():
             raise Exception('Cant acquire class without class year')
         if not self.term:
             raise Exception('Cant acquire class without class term')
-        select_statement = ('SELECT DISTINCT (classs.number, classs.online, classs.lec, classs.tut, classs.tst, classs.credit, classs.name, '
-                      'classs.description, classs.faculty, classs.level, classs.ID) ')
+        select_statement = ('SELECT DISTINCT classs.subject, classs.number, classs.online, classs.lec, classs.tut, classs.tst, classs.credit, classs.name, '
+                      'classs.description, classs.faculty, classs.level, classs.ID ')
         from_statement = 'FROM classs, offered '
-        where_statement = 'offered.ID="{0}" AND classs.ID="{0}" AND offered.term="{1}" AND offered.year="{2}"'.format(self.ID,self.term,self.year)
+        where_statement = 'WHERE offered.ID="{0}" AND classs.ID="{0}" AND offered.term="{1}" AND offered.year="{2}"'.format(self.ID,self.term,self.year)
         sql = select_statement + from_statement + where_statement
         dirr = os.path.dirname(os.path.abspath(__file__))
         conn = sqlite3.connect("{}/classes.db".format(dirr))
@@ -42,6 +42,7 @@ class classs():
         (self.subject, self.number, self.online, self.lec, self.tut,
         self.tst, self.credit, self.name, self.description, self.faculty,
          self.level, self.ID) = row
+        return self
 
     '''
     gen_random_class:
@@ -58,6 +59,8 @@ class classs():
             - self
     '''
     def gen_random_class(self, faculty=None, level=None, program=None, notin=None, term='F', year=2013):
+        if not notin:
+            notin = []
         if not (term and year):
             raise Exception('gotta have a year and term.')
 
@@ -72,11 +75,10 @@ class classs():
         if program:
             where_term += 'AND classs.subject="{}" '.format(program)
         sql = select_term + from_term + where_term
-        print(sql)
         dirr = os.path.dirname(os.path.abspath(__file__))
         conn = sqlite3.connect("{}/classes.db".format(dirr))
         c = conn.cursor()
-        rows = c.execute(sql).fetchall()
+        rows = list(c.execute(sql).fetchall())
         rows_clean = list(filter(lambda x: x[-1] not in notin, rows))
         row = random.choice(rows_clean)
         (self.subject, self.number, self.online, self.lec, self.tut,
@@ -85,10 +87,6 @@ class classs():
         self.term = term
         self.year = year
         return self
-
-
-
-
 
 # class programs
 class Program():
@@ -143,8 +141,8 @@ MATH = Department(department='MATH', programs=[
 
 if __name__ == '__main__':
     c = classs()
-    c.gen_random_class(faculty='OTHER', level=100, term='F', year=2013)
-    print(c.ID, c.year, c.term)
+    c.gen_random_class(faculty='MATH', level=400, term='F', year=2013)
+    print(c.ID,c.credit,c.faculty,c.level,c.name,c.number,c.subject, c.year, c.term)
     pass
 
 
@@ -171,8 +169,7 @@ if __name__ == '__main__':
 'Environmental Science'
 'Science and Aviation'
 
-
-'ENVIRONMENT'
+ENVIRONMENT'
 'Environment and Business'
 'Environment, Resources and Sustainability'
 'Geography and Aviation'
@@ -204,7 +201,7 @@ if __name__ == '__main__':
 
 'ARTS'
 'Anthropology'
-'Economics'
+'Ecomics'
 'Legal Studies'
 'Peace and Conflict Studies'
 'Political Science'
