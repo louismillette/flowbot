@@ -42,6 +42,24 @@ class Scrape():
         except:
             pass
         try:
+            c.execute(( 'CREATE TABLE classs'
+                        '(subject TEXT, '
+                        'number TEXT, '
+                        'online INTEGER, '
+                        'lec INTEGER, '
+                        'tut INTEGER, '
+                        'tst INTEGER, '
+                        'credit REAL, '
+                        'name TEXT, '
+                        'description TEXT, '
+                        'ID TEXT NOT NULL, '
+                        'faculty TEXT, '
+                        'level INTEGER, '
+                        'PRIMARY KEY (ID), '
+                        'UNIQUE (ID))'))
+        except:
+            pass
+        try:
         # each entry is a class term/year combination, for that class being available in that year/term
             c.execute(('CREATE TABLE offered'
                         '(ID TEXT, '
