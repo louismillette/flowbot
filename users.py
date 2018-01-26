@@ -6,6 +6,9 @@ import names
 import majors
 import json
 import time
+import re
+import logging
+import http.client as http_client
 
 '''
 user:
@@ -97,8 +100,8 @@ class user():
                 break
         with open(os.path.join(dirr, 'student_ids.txt'), 'w+') as file:
             file.write(json.dumps(ids))
-        self.student_id = id_guess
-        return id_guess
+        self.student_id = str(prefix + id_guess + thousands)
+        return str(prefix + id_guess + thousands)
 
     def gen_faculty(self):
         pass
@@ -118,7 +121,7 @@ class user():
         year = 2013
         # pick our 'demanded' classes
         for ID in classes:
-            e = majors.classs(id=ID, term=term, year=year)._gen_class()
+            e = majors.classs(ID=ID, term=term, year=year)._gen_class()
             pre_selected_classes.append(e)
             not_in.append(e.ID)
         # pick 14 electives
@@ -196,12 +199,12 @@ class user():
             courses_a = self.classes['term_{}a'.format(curr_year)]
             courses_b = self.classes['term_{}b'.format(curr_year)]
             course_by_term += [{
-                "name":"Fall+{}".format(year),
+                "name":"Fall {}".format(year),
                 "programYearId": "{}A".format(curr_year),
                 "courseIds":[ele.ID for ele in courses_a]
 
             },{
-                "name": "Winter+{}".format(year),
+                "name": "Winter {}".format(year),
                 "programYearId": "{}B".format(curr_year),
                 "courseIds": [ele.ID for ele in courses_b]
             }]
@@ -209,7 +212,7 @@ class user():
         transcript = {
             "coursesByTerm": course_by_term,
             "studentId": self.student_id,
-            "programName": self.program
+            "programName": "Statistics, Honours"
         }
         self.transcript = transcript
         return transcript
@@ -217,7 +220,8 @@ class user():
     # This user creates an account.  requires email, studentID, classes, and transcript
     # returtns self.  cookies, and profile number are set internally
     def create_account(self):
-        get_request = requests.get(
+        self.s = requests.Session()
+        get_request = self.s.get(
             url="https://uwflow.com",
             headers={
                 "Accept": "text / html, application / xhtml + xml, application / xml;q = 0.9, image / webp, image / apng, * / *;q = 0.8",
@@ -231,10 +235,9 @@ class user():
         )
         soup = BeautifulSoup(get_request.text, "html5lib")
         csrf_token = soup.find('meta', attrs={'name':'csrf-token'})['content']
-        self.cookies = dict(get_request.cookies)
         time.sleep(2)  # be kind to the server!
         print('Sucessfuly created get request to uwflow server')
-        create_user_request = requests.post(
+        create_user_request = self.s.post(
             url="https://uwflow.com/api/v1/signup/email",
             data={
                 "first_name": self.first_name,
@@ -255,10 +258,8 @@ class user():
                 "User-Agent": "Mozilla / 5.0(Windows NT 10.0;Win64;x64) AppleWebKit / 537.36(KHTML, like Gecko) Chrome / 63.0.3239.132 Safari / 537.36",
                 "X-Requested-With": "XMLHttpRequest",
                 "X-CSRF-Token": csrf_token,
-            },
-            cookies = self.cookies
+            }
         )
-        self.cookies = dict(create_user_request.cookies)
         try:
             json.loads(BeautifulSoup(create_user_request.text, "html5lib").find('body').text)
         except:
@@ -266,7 +267,7 @@ class user():
             return self
         time.sleep(2)
         print('Sucessfuly created user')
-        get_profile_request = requests.get(
+        get_profile_request = self.s.get(
             url="https://uwflow.com/profile",
             headers={
                 "Accept": "text / html, application / xhtml + xml, application / xml;q = 0.9, image / webp, image / apng, * / *;q = 0.8",
@@ -277,29 +278,196 @@ class user():
                 "Referer": "https://uwflow.com/",
                 "Upgrade-Insecure-Requests": "1",
                 "User-Agent": "Mozilla / 5.0(Windows NT 10.0;Win64;x64) AppleWebKit / 537.36(KHTML, like Gecko) Chrome / 63.0.3239.132 Safari / 537.36"
-            },
-            cookies=self.cookies
+            }
         )
         profile_url = get_profile_request.history[1].url
         profile_number = profile_url.split('/')[-1]
         self.profile_number = profile_number
+        self.password = str(self.id) * 4
         print({
                 "first_name": self.first_name,
                 "last_name": self.last_name,
                 "email": self.uwaterloo,
-                "password": self.id * 4,
+                "password": str(self.id) * 4,
                 "profile": self.profile_number
         })
         return self
 
+    def add_transcript(self):
+        get_request = self.s.get(
+            url="https://uwflow.com/onboarding",
+            headers={
+                "Accept": "text / html, application / xhtml + xml, application / xml;q = 0.9, image / webp, image / apng, * / *;q = 0.8",
+                "Accept-Encoding":"gzip, deflate, br",
+                "Accept-Language":"en - CA, en - GB;q = 0.9, en - US;q = 0.8, en;q = 0.7",
+                "Connection":"keep-alive",
+                "Host":"uwflow.com",
+                "Upgrade-Insecure-Requests": "1",
+                "User-Agent": "Mozilla / 5.0(Windows NT 10.0;Win64;x64) AppleWebKit / 537.36(KHTML, like Gecko) Chrome / 63.0.3239.132 Safari / 537.36"
+            }
+        )
+        soup = BeautifulSoup(get_request.text, "html5lib")
+        csrf_token = soup.find('meta', attrs={'name':'csrf-token'})['content']
+        self.cookies = dict(get_request.cookies)
+        time.sleep(2)  # be kind to the server!
+        print('Sucessfuly requested uwflow home page')
+        upload_transcript_request = self.s.post(
+            url="https://uwflow.com/api/transcript",
+            data={"transcriptData": json.dumps(self.transcript)},
+            headers={
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Accept-Language": "en - CA, en - GB;q = 0.9, en - US;q = 0.8, en;q = 0.7",
+                "Connection": "keep-alive",
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "Origin": "https://uwflow.com",
+                "Referer": "https://uwflow.com/onboarding",
+                "Host": "uwflow.com",
+                "User-Agent": "Mozilla / 5.0(Windows NT 10.0;Win64;x64) AppleWebKit / 537.36(KHTML, like Gecko) Chrome / 63.0.3239.132 Safari / 537.36",
+                "X-Requested-With": "XMLHttpRequest",
+                "X-CSRF-Token": csrf_token,
+            }
+        )
+        print('Sucessfuly posted transcript')
+        print(self.transcript)
+        print(upload_transcript_request.status_code)
+        # print(BeautifulSoup(upload_transcript_request.text, 'html5lib').prettify())
 
+    # must be course user has taken
+    # rating better be 0 or 1
+    def review_course(self,course, rating):
+        courseId = 0
+        get_request = self.s.get(
+            url="https://uwflow.com/course/{}".format(course),
+            headers={
+                "Accept": "text / html, application / xhtml + xml, application / xml;q = 0.9, image / webp, image / apng, * / *;q = 0.8",
+                "Accept-Encoding":"gzip, deflate, br",
+                "Accept-Language":"en - CA, en - GB;q = 0.9, en - US;q = 0.8, en;q = 0.7",
+                "Connection":"keep-alive",
+                "Host":"uwflow.com",
+                "Upgrade-Insecure-Requests": "1",
+                "User-Agent": "Mozilla / 5.0(Windows NT 10.0;Win64;x64) AppleWebKit / 537.36(KHTML, like Gecko) Chrome / 63.0.3239.132 Safari / 537.36"
+            }
+        )
+        time.sleep(2)
+        courseId = [ele[-1] for ele in re.findall(r'{}(.*?)user_course_id":\s?\s?"(.*?)",'.format(course), get_request.text)][-1]
+        soup = BeautifulSoup(get_request.text, "html5lib")
+        csrf_token = soup.find('meta', attrs={'name': 'csrf-token'})['content']
+        print(courseId)
+        payload = {
+            "id": {
+                "$oid": "{}".format(courseId)
+            },
+            "term_id": "2017_09",
+            "term_name": "Fall 2017",
+            "course_id": course,
+            "professor_id": None,
+            "professor_review": {
+                "comment": "",
+                "privacy": "friends",
+                "ratings": [
+                    {
+                        "name": "clarity",
+                        "rating": None
+                    },
+                    {
+                        "name": "passion",
+                        "rating": None
+                    }
+                ],
+                "num_voted_helpful": 0,
+                "num_voted_not_helpful": 0,
+                "user_course_id": {
+                    "$oid": "{}".format(courseId)
+                },
+                "review_type": "prof",
+                "can_vote": False
+            },
+            "course_review": {
+                "comment": "",
+                "privacy": "friends",
+                "ratings": [
+                    {
+                        "name": "usefulness",
+                        "rating": rating
+                    },
+                    {
+                        "name": "easiness",
+                        "rating": rating
+                    },
+                    {
+                        "name": "interest",
+                        "rating": rating
+                    }
+                ],
+                "num_voted_helpful": 0,
+                "num_voted_not_helpful": 0,
+                "user_course_id": {
+                    "$oid": "{}".format(courseId)
+                },
+                "review_type": "course",
+                "can_vote": False
+            },
+            "has_reviewed": False,
+            "user_id": {
+                "$oid": self.profile_number
+            },
+            "program_year_id": "4A"
+        }
+
+        post_review_request = self.s.put(
+            url="https://uwflow.com/api/user/course",
+            json=payload,
+            headers={
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Accept-Encoding":"gzip, deflate, br",
+                "Accept-Language":"en-US,en;q=0.5",
+                "Connection":"keep-alive",
+                "Content-Type": "application/json",
+                "Origin":"https://uwflow.com",
+                "Pragma":"no-cache",
+                "Referer":"https://uwflow.com/{}".format(course),
+                "Host":"uwflow.com",
+                "User-Agent": "Mozilla / 5.0(Windows NT 10.0;Win64;x64) AppleWebKit / 537.36(KHTML, like Gecko) Chrome / 63.0.3239.132 Safari / 537.36",
+                "X-Requested-With": "XMLHttpRequest",
+                "X-CSRF-Token": csrf_token,
+            }
+        )
+        # print(BeautifulSoup(post_review_request.text).prettify())
+        print(post_review_request.status_code)
+        print(payload)
+
+# print some cool colors
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
 
 if __name__ == '__main__':
-    U = user(first='jon',last='public', faculty='MATH',program='cs')
-    U.gen_classes()
-    print('classes generated')
-    U.gen_transcript()
-    print('transcript generated')
+    print(bcolors.OKBLUE + '[+] Starting User Creation and Rating' + bcolors.ENDC)
+    start = time.time()
+    U = user(first='john Q ',last='Public', faculty='MATH',program='cs', year=2014)
+    U.gen_classes(classes=['stat441'])
+    print(bcolors.OKBLUE + '[+] classes generated' + bcolors.ENDC)
+    U.gen_transcript(year=2014)
+    print(bcolors.OKBLUE + '[+] transcript generated' + bcolors.ENDC)
     U.create_account()
-    print('account generated')
-    # print(U.gen_classes())
+    print(bcolors.OKBLUE + '[+] account generated' + bcolors.ENDC)
+    U.add_transcript()
+    print(bcolors.OKBLUE + str(U.gen_classes()) + bcolors.ENDC)
+
+    # enable logging:
+    logging.basicConfig()
+    logging.getLogger().setLevel(logging.DEBUG)
+    requests_log = logging.getLogger("requests.packages.urllib3")
+    requests_log.setLevel(logging.DEBUG)
+    requests_log.propagate = True
+    http_client.HTTPConnection.debuglevel = 1
+    U.review_course(course='stat441', rating=0)
+    end = time.time()
+    print(bcolors.OKBLUE + '[+] Rated Course in {} seconds'.format(end-start) + bcolors.ENDC)
