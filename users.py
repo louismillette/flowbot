@@ -11,6 +11,7 @@ import logging
 import http.client as http_client
 import names
 import sqlite3
+import datetime
 
 '''
 user:
@@ -33,31 +34,50 @@ user:
 # idd may be any random, but unique, id
 # given the first name, last name,
 class user():
-    def __init__(self, first=None, last=None, country=None, id=None, year=None, faculty=None, program=None):
-        self.first_name = first
-        self.last_name = last
-        self.country = country
-        self.join_date = ''
-        self.email = ''
-        self.password = ''
-        self.last_visited = None
-        # eg. mduan or 20345619 ?
-        self.student_id = ''
-        # eg. university_of_waterloo ?
-        self.school_id = 'university_of_waterloo'
-        # eg. software_engineering ?
+    def __init__(self, first=None, last=None, year=None, faculty=None, program=None, id=None):
+        # getting used from DB useing user id
+        if id:
+            dirr = os.path.dirname(os.path.abspath(__file__))
+            conn = sqlite3.connect("{}/classes.db".format(dirr))
+            c = conn.cursor()
+            this_user= c.execute('SELECT * FROM user WHERE id="{}"'.format(id)).fetchall()
+            if len(this_user) != 1:
+                raise Exception('No or Multiple Users for this user id')
+            (id,active,self.username,self.password,self.profile_number,self.id,
+             self.student_id,self.first_name,self.last_name,self.year, self.program, self.faculty) = this_user[0]
+            self.uwaterloo = self.username
 
-        self.api_key = None
+        # generating a new user
+        else:
+            self.first_name = first
+            self.last_name = last
+            self.password = ''
+            self.student_id = ''
+            self.id=id
+            self.year = year
+            self.faculty = faculty
+            self.program = program
 
-        self.id=id
-        self.year = year
-        self.faculty = faculty
-        self.program = program
+            ## generate identity
+            self.gen_id()
+            self.gen_Emails()
+            self.gen_student_id()
+            self.username = self.uwaterloo
+            self.password = str(self.id) * 4
 
-        ## generate identity
-        self.gen_id()
-        self.gen_Emails()
-        self.gen_student_id()
+            # put user in DB
+            dirr = os.path.dirname(os.path.abspath(__file__))
+            conn = sqlite3.connect("{}/classes.db".format(dirr))
+            c = conn.cursor()
+            # c.execute('ALTER TABLE user ADD COLUMN program TEXT')
+            self.setUpDBLocal()
+            c.execute('INSERT INTO user VALUES("{}", "{}", "{}", "{}", "{}", "{}", "{}", "{}", "{}", "{}", "{}", "{}", "{}")'.format(
+                "{}_{}_{}".format(self.first_name, self.last_name, self.id),
+                0, self.uwaterloo, self.password, 0, 0, self.id, self.student_id, first, last, year, self.program, self.faculty
+            ))
+            conn.commit()
+
+
 
     def setUpDBLocal(self):
         dirr = os.path.dirname(os.path.abspath(__file__))
@@ -69,6 +89,15 @@ class user():
                         'active INTEGER, ' # has this user been activated on flow yet?
                         'username TEXT, '
                         'password TEXT, '
+                        'number TEXT DEFAULT NULL, '
+                        'time TEXT, '
+                        'pa_id TEXT, '
+                        'student_number INTEGER, '
+                        'first TEXT, '
+                        'last TEXT, '
+                        'year INTEGER, '
+                        'program TEXT, '
+                        'department TEXT, '
                         'PRIMARY KEY (ID), '
                         'UNIQUE (ID))'))
         except:
@@ -76,19 +105,20 @@ class user():
         try:
             c.execute(( 'CREATE TABLE user_course'
                         '(user_id TEXT, '
-                        'course_id TEXT, ' # has this user been activated on flow yet?
-                        'PRIMARY KEY (course_id), '
-                        'FOREIGN KEY (user_id) REFERENCES user (id) '))
+                        'course_id TEXT, '
+                        'FOREIGN KEY (user_id) REFERENCES user (id));'))
         except:
             pass
         try:
             c.execute(( 'CREATE TABLE user_reviews'
-                        '(id TEXT, '
-                        'active INTEGER, ' # has this user been activated on flow yet?
-                        'username TEXT, '
-                        'password TEXT, '
-                        'PRIMARY KEY (ID), '
-                        'UNIQUE (ID))'))
+                        '(user_id TEXT, '
+                        'course_id TEXT, '
+                        'time INTEGER, '
+                        'interest INTEGER, '
+                        'easiness INTEGER, '
+                        'usefulness INTEGER, '
+                        'FOREIGN KEY (user_id) REFERENCES user(id), '
+                        'FOREIGN KEY (course_id) REFERENCES user_course (course_id))'))
         except:
             pass
 
@@ -199,6 +229,15 @@ class user():
         courses = core+electives+pre_selected_classes+upper_300200
         print(len(courses))
         courses_s = list(sorted(courses, key=lambda x: x.number))
+        dirr = os.path.dirname(os.path.abspath(__file__))
+        conn = sqlite3.connect("{}/classes.db".format(dirr))
+        c = conn.cursor()
+        for course in courses_s:
+            c.execute('INSERT INTO user_course VALUES ("{}", "{}")'.format(
+                "{}_{}_{}".format(self.first_name, self.last_name, self.id),
+                course.ID
+            ))
+        conn.commit()
         terms = {
             'term_1a': courses_s[:5],
             'term_1b': courses_s[5:10],
@@ -325,9 +364,20 @@ class user():
                 "password": str(self.id) * 4,
                 "profile": self.profile_number
         })
+        # update user to reflect created account
+        dirr = os.path.dirname(os.path.abspath(__file__))
+        conn = sqlite3.connect("{}/classes.db".format(dirr))
+        c = conn.cursor()
+        c.execute(('UPDATE user '
+                  'SET active=1, time="{}", number="{}" '
+                   'WHERE id="{}"').format(datetime.datetime.now(),
+                                         self.profile_number,
+                                         "{}_{}_{}".format(self.first_name, self.last_name, self.id)))
+        conn.commit()
         return self
 
     # adds tancript to account
+    # in DB, we'll assume all active users have also uploaded their transcript
     def add_transcript(self):
         get_request = self.s.get(
             url="https://uwflow.com/onboarding",
@@ -370,7 +420,24 @@ class user():
 
     # must be course user has taken
     # rating better be 0 or 1
-    def review_course(self,course, rating):
+    def review_course(self, course, usefulness, interest, easiness):
+        # validate user nad users ability to rate the coure
+        dirr = os.path.dirname(os.path.abspath(__file__))
+        conn = sqlite3.connect("{}/classes.db".format(dirr))
+        c = conn.cursor()
+        user_course = c.execute('SELECT * FROM user_course WHERE user_id={} AND course_id={}'.format(
+            "{}_{}_{}".format(self.first_name, self.last_name, self.id),
+            course
+        )).fetchall()
+        user_reviews = c.execute('SELECT * FROM user_reviews WHERE user_id={} AND course_id={}'.format(
+            "{}_{}_{}".format(self.first_name, self.last_name, self.id),
+            course
+        )).fetchall()
+        if len(user_course) == 0:
+            raise Exception('User {} cannot rate course {}'.format("{}_{}_{}".format(self.first_name, self.last_name, self.id), course))
+        if len(user_reviews) != 0:
+            raise Exception('User {} has already rated course {}'.format("{}_{}_{}".format(self.first_name, self.last_name, self.id), course))
+        # begin requests
         course_term_name = list(filter(lambda x: course in x['courseIds'], self.transcript['coursesByTerm']))[0]['name']
         code = course_term_name.split(' ')[1] + ('_09' if course_term_name.split(' ')[0]=="Fall" else ('_05' if course_term_name.split(' ')[0]=="Spring" else '_01'))
         get_request = self.s.get(
@@ -425,15 +492,15 @@ class user():
                 "ratings": [
                     {
                         "name": "usefulness",
-                        "rating": rating
+                        "rating": usefulness
                     },
                     {
                         "name": "easiness",
-                        "rating": rating
+                        "rating": easiness
                     },
                     {
                         "name": "interest",
-                        "rating": rating
+                        "rating": interest
                     }
                 ],
                 "num_voted_helpful": 0,
@@ -470,6 +537,12 @@ class user():
             }
         )
         # print(BeautifulSoup(post_review_request.text).prettify())
+        # update user to reflect created account
+        c.execute(('INSERT INTO user_reviews VALUES ("{}", "{}", "{}", "{}", "{}", "{}")').format(
+            "{}_{}_{}".format(self.first_name, self.last_name, self.id),
+            course, datetime.datetime.now(), interest, easiness, usefulness
+        ))
+        conn.commit()
         print(post_review_request.status_code)
         print(payload)
 
@@ -517,7 +590,6 @@ class user():
         print(create_user_request.status_code)
         return self
 
-
 # print some cool colors
 class bcolors:
     HEADER = '\033[95m'
@@ -529,31 +601,36 @@ class bcolors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
-if __name__ == '__main__':
-    # user creation and ranking protocol
-    # time.sleep(random.randint(10,20) + random.randint(1000,9999)/1000)
+def gen_random_user(faculty,program,year,classes, debug=1):
     fname = random.choice(names.FIRST_NAMES).lower()
     lname = random.choice(names.LAST_NAMES).lower()
-    # print(bcolors.OKBLUE + '[+] Starting User Creation and Rating' + bcolors.ENDC)
-    # start = time.time()
-    U = user(first=fname, last=lname, faculty='MATH',program='cs', year=2014)
-    # U.gen_classes(classes=['stat441'])
-    # print(bcolors.OKBLUE + '[+] classes generated' + bcolors.ENDC)
-    # U.gen_transcript(year=2014)
-    # print(bcolors.OKBLUE + '[+] transcript generated' + bcolors.ENDC)
-    # U.create_account()
-    # print(bcolors.OKBLUE + '[+] account generated' + bcolors.ENDC)
-    # U.add_transcript()
-    # print(bcolors.OKBLUE + str(U.gen_classes()) + bcolors.ENDC)
-    #
-    # # enable logging:
-    # logging.basicConfig()
-    # logging.getLogger().setLevel(logging.DEBUG)
-    # requests_log = logging.getLogger("requests.packages.urllib3")
-    # requests_log.setLevel(logging.DEBUG)
-    # requests_log.propagate = True
-    # http_client.HTTPConnection.debuglevel = 1
-    # U.review_course(course='stat441', rating=0)
-    # end = time.time()
-    # print(bcolors.OKBLUE + '[+] Rated Course in {} seconds'.format(end-start) + bcolors.ENDC)
-    U.log_in("msparks291@edu.uwaterloo.ca", "291291291291")
+    if debug != 0:
+        print(bcolors.OKBLUE + '[+] Starting User Creation and Rating' + bcolors.ENDC)
+    start = time.time()
+    U = user(first=fname, last=lname, faculty=faculty, program=program, year=year)
+    U.gen_classes(classes=classes)
+    if debug != 0:
+        print(bcolors.OKBLUE + '[+] classes generated' + bcolors.ENDC)
+    U.gen_transcript(year=year)
+    if debug != 0:
+        print(bcolors.OKBLUE + '[+] transcript generated' + bcolors.ENDC)
+    U.create_account()
+    if debug != 0:
+        print(bcolors.OKBLUE + '[+] account generated' + bcolors.ENDC)
+    U.add_transcript()
+    end = time.time()
+    if debug != 0:
+        print(bcolors.OKBLUE + str(U.classes) + bcolors.ENDC)
+        print(bcolors.OKBLUE + '[+] Created User in {} seconds'.format(end - start) + bcolors.ENDC)
+    return U
+
+
+
+if __name__ == '__main__':
+    for i in range(259):
+        gen_random_user(faculty='MATH', program='cs', year=2013,
+                        classes=['cs488', 'cs341', 'cs350', 'cs343', 'cs444','cs485','cs240','cs246','cs365','cs476','cs442'])
+        time.sleep(10 + random.randint(10,20) + random.randint(1000,9999)/1000)
+
+
+    # U.review_course(course='cs350',usefulness=0,interest=0,easiness=1)
