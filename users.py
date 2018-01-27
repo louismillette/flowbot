@@ -9,6 +9,8 @@ import time
 import re
 import logging
 import http.client as http_client
+import names
+import sqlite3
 
 '''
 user:
@@ -57,6 +59,39 @@ class user():
         self.gen_Emails()
         self.gen_student_id()
 
+    def setUpDBLocal(self):
+        dirr = os.path.dirname(os.path.abspath(__file__))
+        conn = sqlite3.connect("{}/classes.db".format(dirr))
+        c = conn.cursor()
+        try:
+            c.execute(( 'CREATE TABLE user'
+                        '(id TEXT, '
+                        'active INTEGER, ' # has this user been activated on flow yet?
+                        'username TEXT, '
+                        'password TEXT, '
+                        'PRIMARY KEY (ID), '
+                        'UNIQUE (ID))'))
+        except:
+            pass
+        try:
+            c.execute(( 'CREATE TABLE user_course'
+                        '(user_id TEXT, '
+                        'course_id TEXT, ' # has this user been activated on flow yet?
+                        'PRIMARY KEY (course_id), '
+                        'FOREIGN KEY (user_id) REFERENCES user (id) '))
+        except:
+            pass
+        try:
+            c.execute(( 'CREATE TABLE user_reviews'
+                        '(id TEXT, '
+                        'active INTEGER, ' # has this user been activated on flow yet?
+                        'username TEXT, '
+                        'password TEXT, '
+                        'PRIMARY KEY (ID), '
+                        'UNIQUE (ID))'))
+        except:
+            pass
+
     # Generate some random email account names for this user
     def gen_Emails(self):
         self.uwaterloo = '{}{}{}@edu.uwaterloo.ca'.format(self.first_name[0],self.last_name,self.id)
@@ -103,8 +138,6 @@ class user():
         self.student_id = str(prefix + id_guess + thousands)
         return str(prefix + id_guess + thousands)
 
-    def gen_faculty(self):
-        pass
     # generate the classes this bot is in.  A dict of class ID's (stat452 for instance) may be provided,
     # if this bot should have a particular class set.
     # requires defined program and department (although we're only considering math)
@@ -219,6 +252,7 @@ class user():
 
     # This user creates an account.  requires email, studentID, classes, and transcript
     # returtns self.  cookies, and profile number are set internally
+    # creeates session
     def create_account(self):
         self.s = requests.Session()
         get_request = self.s.get(
@@ -293,6 +327,7 @@ class user():
         })
         return self
 
+    # adds tancript to account
     def add_transcript(self):
         get_request = self.s.get(
             url="https://uwflow.com/onboarding",
@@ -336,7 +371,8 @@ class user():
     # must be course user has taken
     # rating better be 0 or 1
     def review_course(self,course, rating):
-        courseId = 0
+        course_term_name = list(filter(lambda x: course in x['courseIds'], self.transcript['coursesByTerm']))[0]['name']
+        code = course_term_name.split(' ')[1] + ('_09' if course_term_name.split(' ')[0]=="Fall" else ('_05' if course_term_name.split(' ')[0]=="Spring" else '_01'))
         get_request = self.s.get(
             url="https://uwflow.com/course/{}".format(course),
             headers={
@@ -358,8 +394,8 @@ class user():
             "id": {
                 "$oid": "{}".format(courseId)
             },
-            "term_id": "2017_09",
-            "term_name": "Fall 2017",
+            "term_id": code,
+            "term_name": course_term_name,
             "course_id": course,
             "professor_id": None,
             "professor_review": {
@@ -437,6 +473,51 @@ class user():
         print(post_review_request.status_code)
         print(payload)
 
+    # log into the given username and password
+    # starts new session
+    def log_in(self, username, password):
+        print('starting')
+        self.s = requests.Session()
+        get_request = self.s.get(
+            url="https://uwflow.com",
+            headers={
+                "Accept": "text / html, application / xhtml + xml, application / xml;q = 0.9, image / webp, image / apng, * / *;q = 0.8",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Accept-Language": "en - CA, en - GB;q = 0.9, en - US;q = 0.8, en;q = 0.7",
+                "Connection": "keep-alive",
+                "Host": "uwflow.com",
+                "Upgrade-Insecure-Requests": "1",
+                "User-Agent": "Mozilla / 5.0(Windows NT 10.0;Win64;x64) AppleWebKit / 537.36(KHTML, like Gecko) Chrome / 63.0.3239.132 Safari / 537.36"
+            }
+        )
+        soup = BeautifulSoup(get_request.text, "html5lib")
+        csrf_token = soup.find('meta', attrs={'name': 'csrf-token'})['content']
+        time.sleep(2)  # be kind to the server!
+        print('Sucessfuly created get request to uwflow server')
+        create_user_request = self.s.post(
+            url="https://uwflow.com/api/v1/login/email",
+            data={
+                "email": username,
+                "password": password,
+            },
+            headers={
+                "Accept": "*/*",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Accept-Language": "en - CA, en - GB;q = 0.9, en - US;q = 0.8, en;q = 0.7",
+                "Connection": "keep-alive",
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "Origin": "https://uwflow.com",
+                "Referer": "https://uwflow.com/",
+                "Host": "uwflow.com",
+                "User-Agent": "Mozilla / 5.0(Windows NT 10.0;Win64;x64) AppleWebKit / 537.36(KHTML, like Gecko) Chrome / 63.0.3239.132 Safari / 537.36",
+                "X-Requested-With": "XMLHttpRequest",
+                "X-CSRF-Token": csrf_token,
+            }
+        )
+        print(create_user_request.status_code)
+        return self
+
+
 # print some cool colors
 class bcolors:
     HEADER = '\033[95m'
@@ -449,25 +530,30 @@ class bcolors:
     UNDERLINE = '\033[4m'
 
 if __name__ == '__main__':
-    print(bcolors.OKBLUE + '[+] Starting User Creation and Rating' + bcolors.ENDC)
-    start = time.time()
-    U = user(first='john Q ',last='Public', faculty='MATH',program='cs', year=2014)
-    U.gen_classes(classes=['stat441'])
-    print(bcolors.OKBLUE + '[+] classes generated' + bcolors.ENDC)
-    U.gen_transcript(year=2014)
-    print(bcolors.OKBLUE + '[+] transcript generated' + bcolors.ENDC)
-    U.create_account()
-    print(bcolors.OKBLUE + '[+] account generated' + bcolors.ENDC)
-    U.add_transcript()
-    print(bcolors.OKBLUE + str(U.gen_classes()) + bcolors.ENDC)
-
-    # enable logging:
-    logging.basicConfig()
-    logging.getLogger().setLevel(logging.DEBUG)
-    requests_log = logging.getLogger("requests.packages.urllib3")
-    requests_log.setLevel(logging.DEBUG)
-    requests_log.propagate = True
-    http_client.HTTPConnection.debuglevel = 1
-    U.review_course(course='stat441', rating=0)
-    end = time.time()
-    print(bcolors.OKBLUE + '[+] Rated Course in {} seconds'.format(end-start) + bcolors.ENDC)
+    # user creation and ranking protocol
+    # time.sleep(random.randint(10,20) + random.randint(1000,9999)/1000)
+    fname = random.choice(names.FIRST_NAMES).lower()
+    lname = random.choice(names.LAST_NAMES).lower()
+    # print(bcolors.OKBLUE + '[+] Starting User Creation and Rating' + bcolors.ENDC)
+    # start = time.time()
+    U = user(first=fname, last=lname, faculty='MATH',program='cs', year=2014)
+    # U.gen_classes(classes=['stat441'])
+    # print(bcolors.OKBLUE + '[+] classes generated' + bcolors.ENDC)
+    # U.gen_transcript(year=2014)
+    # print(bcolors.OKBLUE + '[+] transcript generated' + bcolors.ENDC)
+    # U.create_account()
+    # print(bcolors.OKBLUE + '[+] account generated' + bcolors.ENDC)
+    # U.add_transcript()
+    # print(bcolors.OKBLUE + str(U.gen_classes()) + bcolors.ENDC)
+    #
+    # # enable logging:
+    # logging.basicConfig()
+    # logging.getLogger().setLevel(logging.DEBUG)
+    # requests_log = logging.getLogger("requests.packages.urllib3")
+    # requests_log.setLevel(logging.DEBUG)
+    # requests_log.propagate = True
+    # http_client.HTTPConnection.debuglevel = 1
+    # U.review_course(course='stat441', rating=0)
+    # end = time.time()
+    # print(bcolors.OKBLUE + '[+] Rated Course in {} seconds'.format(end-start) + bcolors.ENDC)
+    U.log_in("msparks291@edu.uwaterloo.ca", "291291291291")
