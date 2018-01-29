@@ -43,9 +43,29 @@ class user():
             this_user= c.execute('SELECT * FROM user WHERE id="{}"'.format(id)).fetchall()
             if len(this_user) != 1:
                 raise Exception('No or Multiple Users for this user id')
-            (id,active,self.username,self.password,self.profile_number,self.id,
+            (id,active, self.username, self.password, self.profile_number, self.time, self.id,
              self.student_id,self.first_name,self.last_name,self.year, self.program, self.faculty) = this_user[0]
             self.uwaterloo = self.username
+            # load classes and generate transcript
+            my_classes = c.execute(('SELECT course_id '
+                                    'FROM user_course '
+                                    'WHERE user_id="{0}";').format(
+                "{}_{}_{}".format(self.first_name, self.last_name, self.id)))
+            courses_s = list(sorted([ele[0] for ele in my_classes], key=lambda x: int(re.search(r'\d+', x).group())))
+            courses_s = [majors.classs(ID=ele, year=(year if year else 2013), term="F")._gen_class() for ele in courses_s]
+            terms = {
+                'term_1a': courses_s[:5],
+                'term_1b': courses_s[5:10],
+                'term_2a': courses_s[10:15],
+                'term_2b': courses_s[15:20],
+                'term_3a': courses_s[20:25],
+                'term_3b': courses_s[25:30],
+                'term_4a': courses_s[30:35],
+                'term_4b': courses_s[35:40]
+            }
+            self.classes = terms
+            self.gen_transcript(year if year else 2013)
+
 
         # generating a new user
         else:
@@ -202,9 +222,12 @@ class user():
         not_in.append(m400_2.ID)
         # major 300's
         for i in range(6):
-            e = majors.classs().gen_random_class(faculty='MATH', program=program,level=300, notin=not_in, term=term, year=year)
-            upper_300200.append(e)
-            not_in.append(e.ID)
+            try:
+                e = majors.classs().gen_random_class(faculty='MATH', program=program,level=300, notin=not_in, term=term, year=year)
+                upper_300200.append(e)
+                not_in.append(e.ID)
+            except:
+                pass
         # math 300's
         for i in range(4):
             e = majors.classs().gen_random_class(faculty='MATH', level=300, notin=not_in, term=term, year=year)
@@ -309,7 +332,7 @@ class user():
         soup = BeautifulSoup(get_request.text, "html5lib")
         csrf_token = soup.find('meta', attrs={'name':'csrf-token'})['content']
         time.sleep(2)  # be kind to the server!
-        print('Sucessfuly created get request to uwflow server')
+        # print('Sucessfuly created get request to uwflow server')
         create_user_request = self.s.post(
             url="https://uwflow.com/api/v1/signup/email",
             data={
@@ -357,13 +380,13 @@ class user():
         profile_number = profile_url.split('/')[-1]
         self.profile_number = profile_number
         self.password = str(self.id) * 4
-        print({
-                "first_name": self.first_name,
-                "last_name": self.last_name,
-                "email": self.uwaterloo,
-                "password": str(self.id) * 4,
-                "profile": self.profile_number
-        })
+        # print({
+        #         "first_name": self.first_name,
+        #         "last_name": self.last_name,
+        #         "email": self.uwaterloo,
+        #         "password": str(self.id) * 4,
+        #         "profile": self.profile_number
+        # })
         # update user to reflect created account
         dirr = os.path.dirname(os.path.abspath(__file__))
         conn = sqlite3.connect("{}/classes.db".format(dirr))
@@ -425,11 +448,11 @@ class user():
         dirr = os.path.dirname(os.path.abspath(__file__))
         conn = sqlite3.connect("{}/classes.db".format(dirr))
         c = conn.cursor()
-        user_course = c.execute('SELECT * FROM user_course WHERE user_id={} AND course_id={}'.format(
+        user_course = c.execute('SELECT * FROM user_course WHERE user_id="{}" AND course_id="{}"'.format(
             "{}_{}_{}".format(self.first_name, self.last_name, self.id),
             course
         )).fetchall()
-        user_reviews = c.execute('SELECT * FROM user_reviews WHERE user_id={} AND course_id={}'.format(
+        user_reviews = c.execute('SELECT * FROM user_reviews WHERE user_id="{}" AND course_id="{}"'.format(
             "{}_{}_{}".format(self.first_name, self.last_name, self.id),
             course
         )).fetchall()
@@ -548,8 +571,11 @@ class user():
 
     # log into the given username and password
     # starts new session
-    def log_in(self, username, password):
-        print('starting')
+    def log_in(self, username=None, password=None):
+        if not username:
+            username = self.username
+        if not password:
+            password = self.password
         self.s = requests.Session()
         get_request = self.s.get(
             url="https://uwflow.com",
@@ -566,7 +592,7 @@ class user():
         soup = BeautifulSoup(get_request.text, "html5lib")
         csrf_token = soup.find('meta', attrs={'name': 'csrf-token'})['content']
         time.sleep(2)  # be kind to the server!
-        print('Sucessfuly created get request to uwflow server')
+        # print('Sucessfuly created get request to uwflow server')
         create_user_request = self.s.post(
             url="https://uwflow.com/api/v1/login/email",
             data={
@@ -587,7 +613,7 @@ class user():
                 "X-CSRF-Token": csrf_token,
             }
         )
-        print(create_user_request.status_code)
+        # print(create_user_request.status_code)
         return self
 
 # print some cool colors
@@ -605,7 +631,10 @@ def gen_random_user(faculty,program,year,classes, debug=1):
     fname = random.choice(names.FIRST_NAMES).lower()
     lname = random.choice(names.LAST_NAMES).lower()
     if debug != 0:
-        print(bcolors.OKBLUE + '[+] Starting User Creation and Rating' + bcolors.ENDC)
+        try:
+            print(bcolors.OKBLUE + '[+] Starting User Creation and Rating' + bcolors.ENDC)
+        except:
+            pass
     start = time.time()
     U = user(first=fname, last=lname, faculty=faculty, program=program, year=year)
     U.gen_classes(classes=classes)
@@ -624,13 +653,38 @@ def gen_random_user(faculty,program,year,classes, debug=1):
         print(bcolors.OKBLUE + '[+] Created User in {} seconds'.format(end - start) + bcolors.ENDC)
     return U
 
-
+def rateCourse(course, volume=100, usefulness=0,interest=0,easiness=1, debug=1):
+    dirr = os.path.dirname(os.path.abspath(__file__))
+    conn = sqlite3.connect("{}/classes.db".format(dirr))
+    c = conn.cursor()
+    poss_users = c.execute(('SELECT id '
+                         'FROM user,user_course '
+                         'WHERE user.id = user_course.user_id AND course_id="{0}" AND NOT EXISTS ( '
+                            'SELECT * '
+                            'FROM user_reviews '
+                            'WHERE user_id=user.id AND course_id="{0}")').format(course)).fetchall()
+    total_users = [ele[0] for ele in poss_users]
+    if debug != 0:
+        print(bcolors.OKBLUE + '[+] pooled {} total valid users'.format(str(len(total_users))) + bcolors.ENDC)
+    random.shuffle(total_users)
+    users = [user(id=ele) for ele in total_users[:volume]]
+    count = 0
+    for u in users:
+        count += 1
+        u.log_in()
+        u.review_course(course=course, usefulness=usefulness, interest=interest, easiness=easiness)
+        if debug != 0:
+            print(bcolors.OKBLUE + '[+] rating {} complete'.format(count) + bcolors.ENDC)
+        time.sleep(10 + random.randint(10, 20) + random.randint(1000, 9999) / 1000)
 
 if __name__ == '__main__':
-    for i in range(259):
-        gen_random_user(faculty='MATH', program='cs', year=2013,
-                        classes=['cs488', 'cs341', 'cs350', 'cs343', 'cs444','cs485','cs240','cs246','cs365','cs476','cs442'])
-        time.sleep(10 + random.randint(10,20) + random.randint(1000,9999)/1000)
+    pass
+    ## user generation
+    # for i in range(419):
+    #     gen_random_user(faculty='MATH', program='actsc', year=2013,
+    #                     classes=['stat441'])
+    #     time.sleep(10 + random.randint(10,20) + random.randint(1000,9999)/1000)
+    rateCourse('cs115',volume=138,usefulness=0,interest=0,easiness=0)
 
 
     # U.review_course(course='cs350',usefulness=0,interest=0,easiness=1)
