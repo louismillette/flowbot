@@ -250,7 +250,7 @@ class user():
         m10 = majors.classs(ID='stat231', year=year, term=term)._gen_class()
         core = [m1,m2,m3,m4,m5,m6,m7,m8,m9,m10]
         courses = core+electives+pre_selected_classes+upper_300200
-        print(len(courses))
+        # print(len(courses))
         courses_s = list(sorted(courses, key=lambda x: x.number))
         dirr = os.path.dirname(os.path.abspath(__file__))
         conn = sqlite3.connect("{}/classes.db".format(dirr))
@@ -437,8 +437,8 @@ class user():
             }
         )
         print('Sucessfuly posted transcript')
-        print(self.transcript)
-        print(upload_transcript_request.status_code)
+        # print(self.transcript)
+        # print(upload_transcript_request.status_code)
         # print(BeautifulSoup(upload_transcript_request.text, 'html5lib').prettify())
 
     # must be course user has taken
@@ -479,7 +479,7 @@ class user():
         courseId = [ele[-1] for ele in re.findall(r'{}(.*?)user_course_id":\s?\s?"(.*?)",'.format(course), get_request.text)][-1]
         soup = BeautifulSoup(get_request.text, "html5lib")
         csrf_token = soup.find('meta', attrs={'name': 'csrf-token'})['content']
-        print(courseId)
+        # print(courseId)
         payload = {
             "id": {
                 "$oid": "{}".format(courseId)
@@ -566,8 +566,8 @@ class user():
             course, datetime.datetime.now(), interest, easiness, usefulness
         ))
         conn.commit()
-        print(post_review_request.status_code)
-        print(payload)
+        # print(post_review_request.status_code)
+        # print(payload)
 
     # log into the given username and password
     # starts new session
@@ -632,24 +632,28 @@ def gen_random_user(faculty,program,year,classes, debug=1):
     lname = random.choice(names.LAST_NAMES).lower()
     if debug != 0:
         try:
-            print(bcolors.OKBLUE + '[+] Starting User Creation and Rating' + bcolors.ENDC)
+            # print(bcolors.OKBLUE + '[+] Starting User Creation and Rating' + bcolors.ENDC)
+            pass
         except:
             pass
     start = time.time()
     U = user(first=fname, last=lname, faculty=faculty, program=program, year=year)
     U.gen_classes(classes=classes)
     if debug != 0:
-        print(bcolors.OKBLUE + '[+] classes generated' + bcolors.ENDC)
+        # print(bcolors.OKBLUE + '[+] classes generated' + bcolors.ENDC)
+        pass
     U.gen_transcript(year=year)
     if debug != 0:
-        print(bcolors.OKBLUE + '[+] transcript generated' + bcolors.ENDC)
+        # print(bcolors.OKBLUE + '[+] transcript generated' + bcolors.ENDC)
+        pass
     U.create_account()
     if debug != 0:
-        print(bcolors.OKBLUE + '[+] account generated' + bcolors.ENDC)
+        pass
+        # print(bcolors.OKBLUE + '[+] account generated' + bcolors.ENDC)
     U.add_transcript()
     end = time.time()
     if debug != 0:
-        print(bcolors.OKBLUE + str(U.classes) + bcolors.ENDC)
+        # print(bcolors.OKBLUE + str(U.classes) + bcolors.ENDC)
         print(bcolors.OKBLUE + '[+] Created User in {} seconds'.format(end - start) + bcolors.ENDC)
     return U
 
@@ -680,11 +684,26 @@ def rateCourse(course, volume=100, usefulness=0,interest=0,easiness=1, debug=1):
 if __name__ == '__main__':
     pass
     ## user generation
-    # for i in range(419):
-    #     gen_random_user(faculty='MATH', program='actsc', year=2013,
-    #                     classes=['stat441'])
-    #     time.sleep(10 + random.randint(10,20) + random.randint(1000,9999)/1000)
-    rateCourse('cs115',volume=138,usefulness=0,interest=0,easiness=0)
-
+    n = 417
+    for i in range(n):
+        gen_random_user(faculty='MATH', program='cs', year=2013,
+                        classes=['econ101', 'econ102','econ321'])
+        time.sleep(10 + random.randint(1,10) + random.randint(1000,9999)/1000)
+        try:
+            print('[+] Created {} users'.format(i))
+        except:
+            print('[+] Created Another User')
+    # rateCourse('cs341',volume=95,usefulness=1,interest=1,easiness=1)
+    # rateCourse('cs350',volume=62,usefulness=1,interest=1,easiness=1)
+    # rateCourse('cs343',volume=60,usefulness=1,interest=1,easiness=1)
+    # rateCourse('cs444',volume=23,usefulness=1,interest=0,easiness=1)
+    # rateCourse('cs485',volume=42,usefulness=1,interest=1,easiness=1)
+    # rateCourse('cs341',volume=95,usefulness=1,interest=1,easiness=1)
+    # rateCourse('cs444', volume=43, usefulness=1, interest=0, easiness=1)
+    # rateCourse('cs115', volume=224, usefulness=1, interest=1, easiness=0)
+    # rateCourse('stat333', volume=30, usefulness=1, interest=1, easiness=0)
+    # rateCourse('math237', volume=52, usefulness=1, interest=1, easiness=0)
+    # rateCourse('math227', volume=27, usefulness=0, interest=0, easiness=1)
+    ## TODO rateCourse('cs115', volume=1000, usefulness=1, interest=1, easiness=0)
 
     # U.review_course(course='cs350',usefulness=0,interest=0,easiness=1)
